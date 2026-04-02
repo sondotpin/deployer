@@ -11,6 +11,7 @@ import { deployCommand } from "./commands/deploy.js";
 import { restartCommand } from "./commands/restart.js";
 import { execCommand } from "./commands/exec.js";
 import { adddevCommand, removedevCommand, listdevsCommand } from "./commands/devs.js";
+import { envCommand, setenvCommand, delenvCommand, grantenvCommand, revokeenvCommand, envpermsCommand } from "./commands/env.js";
 
 export function createBot(): Telegraf<BotContext> {
   const bot = new Telegraf<BotContext>(config.botToken);
@@ -31,6 +32,12 @@ export function createBot(): Telegraf<BotContext> {
   bot.command("addserver", requireRole("admin"), addserverCommand);
   bot.command("removeserver", requireRole("admin"), removeserverCommand);
   bot.command("pubkey", requireRole("admin"), pubkeyCommand);
+  bot.command("env", requireRole("developer"), envCommand);
+  bot.command("setenv", requireRole("developer"), setenvCommand);
+  bot.command("delenv", requireRole("developer"), delenvCommand);
+  bot.command("grantenv", requireRole("admin"), grantenvCommand);
+  bot.command("revokeenv", requireRole("admin"), revokeenvCommand);
+  bot.command("envperms", requireRole("admin"), envpermsCommand);
 
   bot.on("text", (ctx) => ctx.reply("Unknown command. Try /help"));
 

@@ -4,7 +4,10 @@ const DEVELOPER_CMDS = `
 /servers — List all servers
 /status <server> — Server health check
 /logs <server> <service> [lines] — View logs
-/deploy <app> <server> — Deploy app`;
+/deploy <app> <server> — Deploy app
+/env <server> <app> — View .env file
+/setenv <server> <app> <KEY> <VALUE> — Set env var
+/delenv <server> <app> <KEY> — Delete env var`;
 
 const ADMIN_CMDS = `
 /restart <server> <service> — Restart service
@@ -14,7 +17,10 @@ const ADMIN_CMDS = `
 /listdevs — List developers
 /addserver <name> <host> <port> <user> [apps] — Add server
 /removeserver <name> — Remove server
-/pubkey — Show bot SSH public key`;
+/pubkey — Show bot SSH public key
+/grantenv <userId> <server> <app> — Grant env access
+/revokeenv <userId> <server> <app> — Revoke env access
+/envperms [server] — List env permissions`;
 
 export async function helpCommand(ctx: BotContext) {
   let msg = "/start — Welcome\n/help — This message";

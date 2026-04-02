@@ -93,7 +93,32 @@ if (serverCount.c === 0) {
   }
 }
 
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS env_permissions (
+    user_id INTEGER NOT NULL,
+    server_name TEXT NOT NULL,
+    app_name TEXT NOT NULL,
+    PRIMARY KEY (user_id, server_name, app_name)
+  )
+`);
+
 // --- Prepared statements ---
+const envPermStmts = {
+  grant: sqlite.prepare(
+    "INSERT OR IGNORE INTO env_permissions (user_id, server_name, app_name) VALUES (?, ?, ?)",
+  ),
+  revoke: sqlite.prepare(
+    "DELETE FROM env_permissions WHERE user_id = ? AND server_name = ? AND app_name = ?",
+  ),
+  has: sqlite.prepare(
+    "SELECT 1 FROM env_permissions WHERE user_id = ? AND server_name = ? AND app_name = ?",
+  ),
+  getAll: sqlite.prepare("SELECT user_id, server_name, app_name FROM env_permissions"),
+  getByServer: sqlite.prepare(
+    "SELECT user_id, server_name, app_name FROM env_permissions WHERE server_name = ?",
+  ),
+};
+
 const devStmts = {
   add: sqlite.prepare("INSERT OR IGNORE INTO developers (user_id) VALUES (?)"),
   remove: sqlite.prepare("DELETE FROM developers WHERE user_id = ?"),
@@ -150,6 +175,22 @@ export const db = {
   getServer(name: string): ServerConfig | undefined {
     const row = serverStmts.get.get(name) as ServerRow | undefined;
     return row ? rowToConfig(row) : undefined;
+  },
+
+  // Env Permissions
+  grantEnvAccess(userId: number, serverName: string, appName: string) {
+    envPermStmts.grant.run(userId, serverName, appName);
+  },
+  revokeEnvAccess(userId: number, serverName: string, appName: string): boolean {
+    return envPermStmts.revoke.run(userId, serverName, appName).changes > 0;
+  },
+  hasEnvAccess(userId: number, serverName: string, appName: string): boolean {
+    return envPermStmts.has.get(userId, serverName, appName) !== undefined;
+  },
+  getEnvPermissions(serverName?: string): Array<{ user_id: number; server_name: string; app_name: string }> {
+    type Row = { user_id: number; server_name: string; app_name: string };
+    if (serverName) return envPermStmts.getByServer.all(serverName) as Row[];
+    return envPermStmts.getAll.all() as Row[];
   },
 
   // SSH Keys
