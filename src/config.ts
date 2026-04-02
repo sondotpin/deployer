@@ -5,7 +5,6 @@ export interface ServerConfig {
   host: string;
   port: number;
   username: string;
-  keyEnv: string;
   apps: string[];
 }
 
@@ -27,15 +26,4 @@ function parseJsonArray<T>(key: string): T[] {
 export const config = {
   botToken: required("BOT_TOKEN"),
   adminIds: parseJsonArray<number>("ADMIN_IDS"),
-  servers: parseJsonArray<ServerConfig>("SERVERS"),
 };
-
-export function getServer(name: string): ServerConfig | undefined {
-  return config.servers.find((s) => s.name === name);
-}
-
-export function getSSHKey(server: ServerConfig): string {
-  const key = process.env[server.keyEnv];
-  if (!key) throw new Error(`Missing SSH key env: ${server.keyEnv}`);
-  return key.replace(/\\n/g, "\n");
-}

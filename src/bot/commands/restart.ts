@@ -1,4 +1,4 @@
-import { getServer } from "../../config.js";
+import { db } from "../../db.js";
 import { sshExec } from "../../ssh/manager.js";
 import { codeBlock, truncate } from "../../utils/format.js";
 import type { BotContext } from "../middleware/auth.js";
@@ -13,7 +13,7 @@ export async function restartCommand(ctx: BotContext) {
   }
 
   const [serverName, service] = args;
-  const server = getServer(serverName);
+  const server = db.getServer(serverName);
   if (!server) return ctx.reply(`Server "${serverName}" not found.`);
 
   await ctx.reply(`Restarting ${service} on ${server.name}...`);

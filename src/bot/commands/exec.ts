@@ -1,4 +1,4 @@
-import { getServer } from "../../config.js";
+import { db } from "../../db.js";
 import { sshExec } from "../../ssh/manager.js";
 import { codeBlock, truncate } from "../../utils/format.js";
 import type { BotContext } from "../middleware/auth.js";
@@ -12,7 +12,7 @@ export async function execCommand(ctx: BotContext) {
   }
 
   const [, serverName, command] = match;
-  const server = getServer(serverName);
+  const server = db.getServer(serverName);
   if (!server) return ctx.reply(`Server "${serverName}" not found.`);
 
   await ctx.reply(`Executing on ${server.name}...`);

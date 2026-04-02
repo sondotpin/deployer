@@ -1,4 +1,4 @@
-import { getServer } from "../../config.js";
+import { db } from "../../db.js";
 import { runDeploy } from "../../deploy/deployer.js";
 import type { BotContext } from "../middleware/auth.js";
 
@@ -12,7 +12,7 @@ export async function deployCommand(ctx: BotContext) {
   }
 
   const [app, serverName] = args;
-  const server = getServer(serverName);
+  const server = db.getServer(serverName);
   if (!server) return ctx.reply(`Server "${serverName}" not found.`);
   if (!server.apps.includes(app)) {
     return ctx.reply(`App "${app}" not configured on ${serverName}. Available: ${server.apps.join(", ")}`);

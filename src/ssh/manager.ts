@@ -1,5 +1,6 @@
 import { Client } from "ssh2";
-import { type ServerConfig, getSSHKey } from "../config.js";
+import type { ServerConfig } from "../config.js";
+import { db } from "../db.js";
 
 const CONNECT_TIMEOUT = 10_000;
 const COMMAND_TIMEOUT = 60_000;
@@ -15,7 +16,7 @@ export async function sshExec(
   command: string,
 ): Promise<ExecResult> {
   const conn = new Client();
-  const privateKey = getSSHKey(server);
+  const privateKey = db.getBotPrivateKey();
 
   return new Promise<ExecResult>((resolve, reject) => {
     const timeout = setTimeout(() => {

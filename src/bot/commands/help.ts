@@ -11,7 +11,10 @@ const ADMIN_CMDS = `
 /exec <server> <cmd> — Run command
 /adddev <userId> — Add developer
 /removedev <userId> — Remove developer
-/listdevs — List developers`;
+/listdevs — List developers
+/addserver <name> <host> <port> <user> [apps] — Add server
+/removeserver <name> — Remove server
+/pubkey — Show bot SSH public key`;
 
 export async function helpCommand(ctx: BotContext) {
   let msg = "/start — Welcome\n/help — This message";

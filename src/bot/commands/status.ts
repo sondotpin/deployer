@@ -1,4 +1,4 @@
-import { getServer } from "../../config.js";
+import { db } from "../../db.js";
 import { sshExec } from "../../ssh/manager.js";
 import { codeBlock, truncate } from "../../utils/format.js";
 import type { BotContext } from "../middleware/auth.js";
@@ -12,7 +12,7 @@ export async function statusCommand(ctx: BotContext) {
     return ctx.reply("Usage: /status <server>");
   }
 
-  const server = getServer(args[0]);
+  const server = db.getServer(args[0]);
   if (!server) return ctx.reply(`Server "${args[0]}" not found.`);
 
   await ctx.reply(`Checking ${server.name}...`);
