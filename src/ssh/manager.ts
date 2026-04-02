@@ -1,0 +1,72 @@
+import { Client } from "ssh2";
+import { type ServerConfig, getSSHKey } from "../config.js";
+
+const CONNECT_TIMEOUT = 10_000;
+const COMMAND_TIMEOUT = 60_000;
+
+export interface ExecResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+export async function sshExec(
+  server: ServerConfig,
+  command: string,
+): Promise<ExecResult> {
+  const conn = new Client();
+  const privateKey = getSSHKey(server);
+
+  return new Promise<ExecResult>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      conn.end();
+      reject(new Error(`SSH connection timeout to ${server.name}`));
+    }, CONNECT_TIMEOUT);
+
+    conn
+      .on("ready", () => {
+        clearTimeout(timeout);
+
+        const cmdTimeout = setTimeout(() => {
+          conn.end();
+          reject(new Error(`Command timeout on ${server.name}`));
+        }, COMMAND_TIMEOUT);
+
+        conn.exec(command, (err, stream) => {
+          if (err) {
+            clearTimeout(cmdTimeout);
+            conn.end();
+            reject(err);
+            return;
+          }
+
+          let stdout = "";
+          let stderr = "";
+
+          stream
+            .on("close", (code: number) => {
+              clearTimeout(cmdTimeout);
+              conn.end();
+              resolve({ code: code ?? 0, stdout, stderr });
+            })
+            .on("data", (data: Buffer) => {
+              stdout += data.toString();
+            })
+            .stderr.on("data", (data: Buffer) => {
+              stderr += data.toString();
+            });
+        });
+      })
+      .on("error", (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      })
+      .connect({
+        host: server.host,
+        port: server.port,
+        username: server.username,
+        privateKey,
+        readyTimeout: CONNECT_TIMEOUT,
+      });
+  });
+}

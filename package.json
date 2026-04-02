@@ -1,0 +1,28 @@
+{
+  "name": "deployer-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.8.0",
+    "dotenv": "^16.4.7",
+    "ssh2": "^1.16.0",
+    "telegraf": "^4.16.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3", "cpu-features", "esbuild", "ssh2"]
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.17.12",
+    "@types/ssh2": "^1.15.4",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
