@@ -43,3 +43,15 @@ export function requireRole(minRole: Role): MiddlewareFn<BotContext> {
     return next();
   };
 }
+
+export function requirePerm(command: string): MiddlewareFn<BotContext> {
+  return (ctx, next) => {
+    if (ctx.role === "admin") return next();
+    if (ctx.role !== "developer") return ctx.reply("Access denied.");
+    const userId = ctx.from?.id;
+    if (!userId || !db.hasCommand(userId, command)) {
+      return ctx.reply(`No permission for /${command}. Ask admin to /grant.`);
+    }
+    return next();
+  };
+}

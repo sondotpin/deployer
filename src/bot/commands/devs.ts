@@ -45,3 +45,56 @@ export async function listdevsCommand(ctx: BotContext) {
   if (ids.length === 0) return ctx.reply("No developers configured.");
   await ctx.reply(`Developers:\n${ids.map((id) => `• ${id}`).join("\n")}`);
 }
+
+export async function grantCommand(ctx: BotContext) {
+  const args = ctx.message && "text" in ctx.message
+    ? ctx.message.text.split(/\s+/).slice(1)
+    : [];
+
+  if (args.length < 2) {
+    return ctx.reply("Usage: /grant <userId> <command>\nCommands: servers, status, logs, env, setenv, delenv, restart, exec");
+  }
+
+  const userId = parseInt(args[0], 10);
+  if (isNaN(userId)) return ctx.reply("Invalid userId.");
+
+  const command = args[1].replace(/^\//, "");
+  db.grantCommand(userId, command);
+  await ctx.reply(`Granted /${command} to ${userId}.`);
+}
+
+export async function revokeCommand(ctx: BotContext) {
+  const args = ctx.message && "text" in ctx.message
+    ? ctx.message.text.split(/\s+/).slice(1)
+    : [];
+
+  if (args.length < 2) {
+    return ctx.reply("Usage: /revoke <userId> <command>");
+  }
+
+  const userId = parseInt(args[0], 10);
+  if (isNaN(userId)) return ctx.reply("Invalid userId.");
+
+  const command = args[1].replace(/^\//, "");
+  const revoked = db.revokeCommand(userId, command);
+  await ctx.reply(revoked ? `Revoked /${command} from ${userId}.` : "Permission not found.");
+}
+
+export async function permsCommand(ctx: BotContext) {
+  const args = ctx.message && "text" in ctx.message
+    ? ctx.message.text.split(/\s+/).slice(1)
+    : [];
+
+  if (args.length >= 1) {
+    const userId = parseInt(args[0], 10);
+    if (isNaN(userId)) return ctx.reply("Invalid userId.");
+    const cmds = db.getUserCommands(userId);
+    if (cmds.length === 0) return ctx.reply(`No extra permissions for ${userId}.`);
+    return ctx.reply(`Permissions for ${userId}:\n${cmds.map((c) => `• /${c}`).join("\n")}`);
+  }
+
+  const all = db.getAllCommandPerms();
+  if (all.length === 0) return ctx.reply("No command permissions configured.");
+  const lines = all.map((p) => `• ${p.user_id} → /${p.command}`);
+  await ctx.reply(`Command permissions:\n${lines.join("\n")}`);
+}

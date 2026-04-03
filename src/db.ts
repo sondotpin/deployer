@@ -162,6 +162,14 @@ sqlite.exec(`
 `);
 
 sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS command_permissions (
+    user_id INTEGER NOT NULL,
+    command TEXT NOT NULL,
+    PRIMARY KEY (user_id, command)
+  )
+`);
+
+sqlite.exec(`
   CREATE TABLE IF NOT EXISTS env_permissions (
     user_id INTEGER NOT NULL,
     server_name TEXT NOT NULL,
@@ -171,6 +179,14 @@ sqlite.exec(`
 `);
 
 // --- Prepared statements ---
+const cmdPermStmts = {
+  grant: sqlite.prepare("INSERT OR IGNORE INTO command_permissions (user_id, command) VALUES (?, ?)"),
+  revoke: sqlite.prepare("DELETE FROM command_permissions WHERE user_id = ? AND command = ?"),
+  has: sqlite.prepare("SELECT 1 FROM command_permissions WHERE user_id = ? AND command = ?"),
+  getByUser: sqlite.prepare("SELECT command FROM command_permissions WHERE user_id = ?"),
+  getAll: sqlite.prepare("SELECT user_id, command FROM command_permissions"),
+};
+
 const envPermStmts = {
   grant: sqlite.prepare(
     "INSERT OR IGNORE INTO env_permissions (user_id, server_name, app_name) VALUES (?, ?, ?)",
@@ -255,6 +271,23 @@ export const db = {
   getServer(name: string): ServerConfig | undefined {
     const row = serverStmts.get.get(name) as ServerRow | undefined;
     return row ? rowToConfig(row) : undefined;
+  },
+
+  // Command Permissions
+  grantCommand(userId: number, command: string) {
+    cmdPermStmts.grant.run(userId, command);
+  },
+  revokeCommand(userId: number, command: string): boolean {
+    return cmdPermStmts.revoke.run(userId, command).changes > 0;
+  },
+  hasCommand(userId: number, command: string): boolean {
+    return cmdPermStmts.has.get(userId, command) !== undefined;
+  },
+  getUserCommands(userId: number): string[] {
+    return (cmdPermStmts.getByUser.all(userId) as { command: string }[]).map((r) => r.command);
+  },
+  getAllCommandPerms(): Array<{ user_id: number; command: string }> {
+    return cmdPermStmts.getAll.all() as Array<{ user_id: number; command: string }>;
   },
 
   // Env Permissions
