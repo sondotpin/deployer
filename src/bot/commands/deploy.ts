@@ -38,7 +38,8 @@ export async function setscriptCommand(ctx: BotContext) {
 
   const serverName = parts[1];
   const appName = parts[2];
-  const script = text.slice(text.indexOf(parts[3]));
+  let script = text.slice(text.indexOf(parts[3]));
+  script = script.replace(/^["']|["']$/g, "").trim();
 
   const server = db.getServer(serverName);
   if (!server) return ctx.reply(`Server "${serverName}" not found.`);
