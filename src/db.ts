@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { generateKeyPairSync } from "node:crypto";
+import { createPublicKey, generateKeyPairSync } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { ServerConfig } from "./config.js";
 import { log } from "./utils/logger.js";
@@ -10,14 +10,29 @@ mkdirSync("data", { recursive: true });
 const KEY_PATH = "data/bot_key";
 const PUB_PATH = "data/bot_key.pub";
 
+function pemToOpenSSH(pem: string): string {
+  const der = createPublicKey(pem).export({ type: "spki", format: "der" });
+  const rawKey = der.subarray(-32);
+  const keyType = Buffer.from("ssh-ed25519");
+  const encLen = (n: number) => { const b = Buffer.alloc(4); b.writeUInt32BE(n); return b; };
+  return `ssh-ed25519 ${Buffer.concat([encLen(keyType.length), keyType, encLen(rawKey.length), rawKey]).toString("base64")}`;
+}
+
 if (!existsSync(KEY_PATH)) {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519", {
     publicKeyEncoding: { type: "spki", format: "pem" },
     privateKeyEncoding: { type: "pkcs8", format: "pem" },
   });
   writeFileSync(KEY_PATH, privateKey, { mode: 0o600 });
-  writeFileSync(PUB_PATH, publicKey);
+  writeFileSync(PUB_PATH, pemToOpenSSH(publicKey));
   log.info("Generated new ed25519 SSH keypair");
+}
+
+// Migrate existing PEM public key to OpenSSH format
+const pubContent = readFileSync(PUB_PATH, "utf-8");
+if (pubContent.startsWith("-----BEGIN")) {
+  writeFileSync(PUB_PATH, pemToOpenSSH(pubContent));
+  log.info("Migrated public key to OpenSSH format");
 }
 
 const botPrivateKey = readFileSync(KEY_PATH, "utf-8");
