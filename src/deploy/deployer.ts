@@ -1,18 +1,19 @@
 import type { ServerConfig } from "../config.js";
 import { db } from "../db.js";
-import { sshExec } from "../ssh/manager.js";
+import { sshExecStream } from "../ssh/manager.js";
 import { truncate } from "../utils/format.js";
 import { log } from "../utils/logger.js";
 
 export async function runDeploy(
   server: ServerConfig,
   app: string,
+  onLog?: (chunk: string) => void,
 ): Promise<string> {
   const customScript = db.getDeployScript(server.name, app);
   const command = customScript ?? `bash ~/apps/${app}/deploy.sh`;
   log.info(`Deploying ${app} on ${server.name} via ${customScript ? "custom script" : "default deploy.sh"}`);
 
-  const result = await sshExec(server, command);
+  const result = await sshExecStream(server, command, onLog);
 
   if (result.code !== 0) {
     log.error(`Deploy failed: exit ${result.code}`, result.stderr);

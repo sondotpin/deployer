@@ -4,6 +4,7 @@ import { db } from "../db.js";
 
 const CONNECT_TIMEOUT = 10_000;
 const COMMAND_TIMEOUT = 60_000;
+const STREAM_COMMAND_TIMEOUT = 300_000;
 
 export interface ExecResult {
   code: number;
@@ -18,6 +19,18 @@ export async function sshExec(
   const conn = new Client();
   const privateKey = db.getBotPrivateKey();
 
+  return sshExecStream(server, command);
+}
+
+export async function sshExecStream(
+  server: ServerConfig,
+  command: string,
+  onData?: (chunk: string) => void,
+): Promise<ExecResult> {
+  const conn = new Client();
+  const privateKey = db.getBotPrivateKey();
+  const cmdTimeoutMs = onData ? STREAM_COMMAND_TIMEOUT : COMMAND_TIMEOUT;
+
   return new Promise<ExecResult>((resolve, reject) => {
     const timeout = setTimeout(() => {
       conn.end();
@@ -31,7 +44,7 @@ export async function sshExec(
         const cmdTimeout = setTimeout(() => {
           conn.end();
           reject(new Error(`Command timeout on ${server.name}`));
-        }, COMMAND_TIMEOUT);
+        }, cmdTimeoutMs);
 
         conn.exec(command, (err, stream) => {
           if (err) {
@@ -51,10 +64,14 @@ export async function sshExec(
               resolve({ code: code ?? 0, stdout, stderr });
             })
             .on("data", (data: Buffer) => {
-              stdout += data.toString();
+              const chunk = data.toString();
+              stdout += chunk;
+              onData?.(chunk);
             })
             .stderr.on("data", (data: Buffer) => {
-              stderr += data.toString();
+              const chunk = data.toString();
+              stderr += chunk;
+              onData?.(chunk);
             });
         });
       })

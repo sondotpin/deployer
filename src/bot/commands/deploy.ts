@@ -18,13 +18,45 @@ export async function deployCommand(ctx: BotContext) {
     return ctx.reply(`App "${app}" not configured on ${serverName}. Available: ${server.apps.join(", ")}`);
   }
 
-  await ctx.reply(`Deploying ${app} on ${server.name}...`);
+  const msg = await ctx.reply(`Deploying ${app} on ${server.name}...`);
+  const chatId = msg.chat.id;
+  const msgId = msg.message_id;
+
+  let buffer = "";
+  let dirty = false;
+  const EDIT_INTERVAL = 3_000;
+  const MAX_OUTPUT = 4_000;
+
+  const editTimer = setInterval(async () => {
+    if (!dirty) return;
+    dirty = false;
+    const tail = buffer.length > MAX_OUTPUT
+      ? "...\n" + buffer.slice(-MAX_OUTPUT)
+      : buffer;
+    try {
+      await ctx.telegram.editMessageText(chatId, msgId, undefined, `Deploying ${app}...\n\`\`\`\n${tail}\n\`\`\``);
+    } catch {
+      // rate limit or network error — will retry next interval
+    }
+  }, EDIT_INTERVAL);
 
   try {
-    const output = await runDeploy(server, app);
-    await ctx.reply(`Deploy complete:\n${output}`);
+    const output = await runDeploy(server, app, (chunk) => {
+      buffer += chunk;
+      dirty = true;
+    });
+    clearInterval(editTimer);
+    const tail = output.length > MAX_OUTPUT
+      ? "...\n" + output.slice(-MAX_OUTPUT)
+      : output;
+    await ctx.telegram.editMessageText(chatId, msgId, undefined, `Deploy complete:\n\`\`\`\n${tail}\n\`\`\``);
   } catch (err) {
-    await ctx.reply(`Deploy failed: ${err}`);
+    clearInterval(editTimer);
+    const tail = buffer.length > MAX_OUTPUT
+      ? "...\n" + buffer.slice(-MAX_OUTPUT)
+      : buffer;
+    const errOutput = tail ? `\n\`\`\`\n${tail}\n\`\`\`` : "";
+    await ctx.telegram.editMessageText(chatId, msgId, undefined, `Deploy failed: ${err}${errOutput}`);
   }
 }
 
