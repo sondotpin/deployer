@@ -1,6 +1,6 @@
 import { db } from "../../db.js";
 import { runDeploy } from "../../deploy/deployer.js";
-import { codeBlock } from "../../utils/format.js";
+import { codeBlock, escapeMarkdown } from "../../utils/format.js";
 import type { BotContext } from "../middleware/auth.js";
 
 export async function deployCommand(ctx: BotContext) {
@@ -39,7 +39,8 @@ export async function deployCommand(ctx: BotContext) {
       ? "...\n" + buffer.slice(-MAX_OUTPUT)
       : buffer;
     try {
-      await ctx.telegram.editMessageText(chatId, msgId, undefined, `Deploying ${app}...\n${codeBlock(tail)}`, { parse_mode: "MarkdownV2" });
+      const header = escapeMarkdown(`⏳ Deploying ${app}@${serverName} [running]`);
+      await ctx.telegram.editMessageText(chatId, msgId, undefined, `${header}\n${codeBlock(tail)}`, { parse_mode: "MarkdownV2" });
     } catch {
       // rate limit or network error — will retry next interval
     }
@@ -55,7 +56,8 @@ export async function deployCommand(ctx: BotContext) {
     const tail = output.length > MAX_OUTPUT
       ? "...\n" + output.slice(-MAX_OUTPUT)
       : output;
-    await ctx.telegram.editMessageText(chatId, msgId, undefined, `Deploy complete ✅\n${codeBlock(tail)}`, { parse_mode: "MarkdownV2" });
+    const header = escapeMarkdown(`✅ Deploy ${app}@${serverName} [success]`);
+    await ctx.telegram.editMessageText(chatId, msgId, undefined, `${header}\n${codeBlock(tail)}`, { parse_mode: "MarkdownV2" });
   } catch (err) {
     clearInterval(editTimer);
     db.finishDeploy(deployId, "failed");
@@ -63,7 +65,8 @@ export async function deployCommand(ctx: BotContext) {
       ? "...\n" + buffer.slice(-MAX_OUTPUT)
       : buffer;
     const errOutput = tail ? `\n${codeBlock(tail)}` : "";
-    await ctx.telegram.editMessageText(chatId, msgId, undefined, `Deploy failed ❌: ${err}${errOutput}`, { parse_mode: "MarkdownV2" });
+    const header = escapeMarkdown(`❌ Deploy ${app}@${serverName} [failed]: ${err}`);
+    await ctx.telegram.editMessageText(chatId, msgId, undefined, `${header}${errOutput}`, { parse_mode: "MarkdownV2" });
   }
 }
 
