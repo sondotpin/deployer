@@ -22,7 +22,7 @@ export async function envCommand(ctx: BotContext) {
   if (!checkEnvAccess(ctx, serverName, appName)) return;
 
   try {
-    const result = await sshExec(server, `cat ~/apps/${appName}/.env`);
+    const result = await sshExec(server, `cat ~/apps/${appName}/backend.env`);
     if (result.code !== 0) {
       return ctx.reply(`Failed (exit ${result.code}): ${result.stderr}`);
     }
@@ -43,7 +43,7 @@ export async function setenvCommand(ctx: BotContext) {
   if (!server) return ctx.reply(`Server "${serverName}" not found.`);
   if (!checkEnvAccess(ctx, serverName, appName)) return;
 
-  const envPath = `~/apps/${appName}/.env`;
+  const envPath = `~/apps/${appName}/backend.env`;
   const cmd = `grep -q "^${key}=" ${envPath} 2>/dev/null && sed -i "s/^${key}=.*/${key}=${value}/" ${envPath} || echo "${key}=${value}" >> ${envPath}`;
 
   try {
@@ -68,7 +68,7 @@ export async function delenvCommand(ctx: BotContext) {
   if (!checkEnvAccess(ctx, serverName, appName)) return;
 
   try {
-    const result = await sshExec(server, `sed -i "/^${key}=/d" ~/apps/${appName}/.env`);
+    const result = await sshExec(server, `sed -i "/^${key}=/d" ~/apps/${appName}/backend.env`);
     if (result.code !== 0) {
       return ctx.reply(`Failed (exit ${result.code}): ${result.stderr}`);
     }
