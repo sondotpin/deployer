@@ -187,6 +187,18 @@ sqlite.exec(`
   )
 `);
 
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS deploy_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    server_name TEXT NOT NULL,
+    app_name TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+    username TEXT,
+    status TEXT NOT NULL DEFAULT 'running',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )
+`);
+
 // --- Prepared statements ---
 const cmdPermStmts = {
   grant: sqlite.prepare("INSERT OR IGNORE INTO command_permissions (user_id, command) VALUES (?, ?)"),
@@ -223,6 +235,29 @@ const envPathStmts = {
     "DELETE FROM env_paths WHERE server_name = ? AND app_name = ?",
   ),
   getAll: sqlite.prepare("SELECT server_name, app_name, path FROM env_paths"),
+};
+
+const deployHistoryStmts = {
+  insert: sqlite.prepare(
+    "INSERT INTO deploy_history (server_name, app_name, user_id, username) VALUES (?, ?, ?, ?)",
+  ),
+  updateStatus: sqlite.prepare(
+    "UPDATE deploy_history SET status = ? WHERE id = ?",
+  ),
+  getLast: sqlite.prepare(
+    "SELECT * FROM deploy_history WHERE server_name = ? AND app_name = ? ORDER BY id DESC LIMIT 1",
+  ),
+  getCount: sqlite.prepare(
+    "SELECT COUNT(*) as count FROM deploy_history WHERE server_name = ? AND app_name = ?",
+  ),
+  getStats: sqlite.prepare(
+    `SELECT server_name, app_name,
+       COUNT(*) as total,
+       MAX(created_at) as last_deploy,
+       (SELECT username FROM deploy_history d2 WHERE d2.server_name = d1.server_name AND d2.app_name = d1.app_name ORDER BY id DESC LIMIT 1) as last_user
+     FROM deploy_history d1
+     GROUP BY server_name, app_name`,
+  ),
 };
 
 const deployScriptStmts = {
@@ -341,6 +376,21 @@ export const db = {
   },
   getAllEnvPaths(): Array<{ server_name: string; app_name: string; path: string }> {
     return envPathStmts.getAll.all() as Array<{ server_name: string; app_name: string; path: string }>;
+  },
+
+  // Deploy History
+  startDeploy(serverName: string, appName: string, userId: number, username: string): number {
+    const result = deployHistoryStmts.insert.run(serverName, appName, userId, username);
+    return Number(result.lastInsertRowid);
+  },
+  finishDeploy(id: number, status: "success" | "failed") {
+    deployHistoryStmts.updateStatus.run(status, id);
+  },
+  getDeployStats(): Array<{ server_name: string; app_name: string; total: number; last_deploy: string; last_user: string }> {
+    return deployHistoryStmts.getStats.all() as any;
+  },
+  getLastDeploy(serverName: string, appName: string) {
+    return deployHistoryStmts.getLast.get(serverName, appName) as { server_name: string; app_name: string; user_id: number; username: string; status: string; created_at: string } | undefined;
   },
 
   // Deploy Scripts

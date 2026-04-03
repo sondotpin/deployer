@@ -1,5 +1,6 @@
 import { db } from "../../db.js";
 import { runDeploy } from "../../deploy/deployer.js";
+import { codeBlock } from "../../utils/format.js";
 import type { BotContext } from "../middleware/auth.js";
 
 export async function deployCommand(ctx: BotContext) {
@@ -18,6 +19,10 @@ export async function deployCommand(ctx: BotContext) {
     return ctx.reply(`App "${app}" not configured on ${serverName}. Available: ${server.apps.join(", ")}`);
   }
 
+  const userId = ctx.from!.id;
+  const username = ctx.from!.first_name || ctx.from!.username || String(userId);
+  const deployId = db.startDeploy(serverName, app, userId, username);
+
   const msg = await ctx.reply(`Deploying ${app} on ${server.name}...`);
   const chatId = msg.chat.id;
   const msgId = msg.message_id;
@@ -34,7 +39,7 @@ export async function deployCommand(ctx: BotContext) {
       ? "...\n" + buffer.slice(-MAX_OUTPUT)
       : buffer;
     try {
-      await ctx.telegram.editMessageText(chatId, msgId, undefined, `Deploying ${app}...\n\`\`\`\n${tail}\n\`\`\``);
+      await ctx.telegram.editMessageText(chatId, msgId, undefined, `Deploying ${app}...\n${codeBlock(tail)}`, { parse_mode: "MarkdownV2" });
     } catch {
       // rate limit or network error — will retry next interval
     }
@@ -46,18 +51,30 @@ export async function deployCommand(ctx: BotContext) {
       dirty = true;
     });
     clearInterval(editTimer);
+    db.finishDeploy(deployId, "success");
     const tail = output.length > MAX_OUTPUT
       ? "...\n" + output.slice(-MAX_OUTPUT)
       : output;
-    await ctx.telegram.editMessageText(chatId, msgId, undefined, `Deploy complete:\n\`\`\`\n${tail}\n\`\`\``);
+    await ctx.telegram.editMessageText(chatId, msgId, undefined, `Deploy complete ✅\n${codeBlock(tail)}`, { parse_mode: "MarkdownV2" });
   } catch (err) {
     clearInterval(editTimer);
+    db.finishDeploy(deployId, "failed");
     const tail = buffer.length > MAX_OUTPUT
       ? "...\n" + buffer.slice(-MAX_OUTPUT)
       : buffer;
-    const errOutput = tail ? `\n\`\`\`\n${tail}\n\`\`\`` : "";
-    await ctx.telegram.editMessageText(chatId, msgId, undefined, `Deploy failed: ${err}${errOutput}`);
+    const errOutput = tail ? `\n${codeBlock(tail)}` : "";
+    await ctx.telegram.editMessageText(chatId, msgId, undefined, `Deploy failed ❌: ${err}${errOutput}`, { parse_mode: "MarkdownV2" });
   }
+}
+
+export async function deploystatsCommand(ctx: BotContext) {
+  const stats = db.getDeployStats();
+  if (stats.length === 0) return ctx.reply("No deploy history.");
+
+  const lines = stats.map((s) =>
+    `• ${s.app_name}@${s.server_name}: ${s.total} deploys, last by ${s.last_user} at ${s.last_deploy}`
+  );
+  await ctx.reply(`Deploy Stats:\n${lines.join("\n")}`);
 }
 
 export async function setscriptCommand(ctx: BotContext) {
