@@ -4,7 +4,7 @@ import { log } from "../utils/logger.js";
 import { type BotContext, authMiddleware, requireRole } from "./middleware/auth.js";
 import { startCommand } from "./commands/start.js";
 import { helpCommand } from "./commands/help.js";
-import { serversCommand, addserverCommand, removeserverCommand, pubkeyCommand } from "./commands/servers.js";
+import { serversCommand, addserverCommand, removeserverCommand, editserverCommand, pubkeyCommand } from "./commands/servers.js";
 import { statusCommand } from "./commands/status.js";
 import { logsCommand } from "./commands/logs.js";
 import { deployCommand, setscriptCommand, scriptCommand, delscriptCommand } from "./commands/deploy.js";
@@ -31,6 +31,7 @@ export function createBot(): Telegraf<BotContext> {
   bot.command("listdevs", requireRole("admin"), listdevsCommand);
   bot.command("addserver", requireRole("admin"), addserverCommand);
   bot.command("removeserver", requireRole("admin"), removeserverCommand);
+  bot.command("editserver", requireRole("admin"), editserverCommand);
   bot.command("pubkey", requireRole("admin"), pubkeyCommand);
   bot.command("setscript", requireRole("admin"), setscriptCommand);
   bot.command("script", requireRole("admin"), scriptCommand);
