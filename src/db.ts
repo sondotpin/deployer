@@ -94,6 +94,15 @@ if (serverCount.c === 0) {
 }
 
 sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS deploy_scripts (
+    server_name TEXT NOT NULL,
+    app_name TEXT NOT NULL,
+    script TEXT NOT NULL,
+    PRIMARY KEY (server_name, app_name)
+  )
+`);
+
+sqlite.exec(`
   CREATE TABLE IF NOT EXISTS env_permissions (
     user_id INTEGER NOT NULL,
     server_name TEXT NOT NULL,
@@ -116,6 +125,18 @@ const envPermStmts = {
   getAll: sqlite.prepare("SELECT user_id, server_name, app_name FROM env_permissions"),
   getByServer: sqlite.prepare(
     "SELECT user_id, server_name, app_name FROM env_permissions WHERE server_name = ?",
+  ),
+};
+
+const deployScriptStmts = {
+  set: sqlite.prepare(
+    "INSERT OR REPLACE INTO deploy_scripts (server_name, app_name, script) VALUES (?, ?, ?)",
+  ),
+  get: sqlite.prepare(
+    "SELECT script FROM deploy_scripts WHERE server_name = ? AND app_name = ?",
+  ),
+  del: sqlite.prepare(
+    "DELETE FROM deploy_scripts WHERE server_name = ? AND app_name = ?",
   ),
 };
 
@@ -191,6 +212,18 @@ export const db = {
     type Row = { user_id: number; server_name: string; app_name: string };
     if (serverName) return envPermStmts.getByServer.all(serverName) as Row[];
     return envPermStmts.getAll.all() as Row[];
+  },
+
+  // Deploy Scripts
+  setDeployScript(serverName: string, appName: string, script: string) {
+    deployScriptStmts.set.run(serverName, appName, script);
+  },
+  getDeployScript(serverName: string, appName: string): string | undefined {
+    const row = deployScriptStmts.get.get(serverName, appName) as { script: string } | undefined;
+    return row?.script;
+  },
+  deleteDeployScript(serverName: string, appName: string): boolean {
+    return deployScriptStmts.del.run(serverName, appName).changes > 0;
   },
 
   // SSH Keys

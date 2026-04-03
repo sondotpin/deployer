@@ -20,7 +20,10 @@ const ADMIN_CMDS = `
 /pubkey — Show bot SSH public key
 /grantenv <userId> <server> <app> — Grant env access
 /revokeenv <userId> <server> <app> — Revoke env access
-/envperms [server] — List env permissions`;
+/envperms [server] — List env permissions
+/setscript <server> <app> <script> — Set deploy script
+/script <server> <app> — View deploy script
+/delscript <server> <app> — Delete deploy script`;
 
 export async function helpCommand(ctx: BotContext) {
   let msg = "/start — Welcome\n/help — This message";
