@@ -11,7 +11,7 @@ import { deployCommand, setscriptCommand, scriptCommand, delscriptCommand } from
 import { restartCommand } from "./commands/restart.js";
 import { execCommand } from "./commands/exec.js";
 import { adddevCommand, removedevCommand, listdevsCommand, grantCommand, revokeCommand, permsCommand } from "./commands/devs.js";
-import { envCommand, setenvCommand, delenvCommand, grantenvCommand, revokeenvCommand, envpermsCommand } from "./commands/env.js";
+import { envCommand, setenvCommand, delenvCommand, setenvpathCommand, envpathsCommand, grantenvCommand, revokeenvCommand, envpermsCommand } from "./commands/env.js";
 
 export function createBot(): Telegraf<BotContext> {
   const bot = new Telegraf<BotContext>(config.botToken);
@@ -48,6 +48,8 @@ export function createBot(): Telegraf<BotContext> {
   bot.command("setscript", requireRole("admin"), setscriptCommand);
   bot.command("script", requireRole("admin"), scriptCommand);
   bot.command("delscript", requireRole("admin"), delscriptCommand);
+  bot.command("setenvpath", requireRole("admin"), setenvpathCommand);
+  bot.command("envpaths", requireRole("admin"), envpathsCommand);
   bot.command("grantenv", requireRole("admin"), grantenvCommand);
   bot.command("revokeenv", requireRole("admin"), revokeenvCommand);
   bot.command("envperms", requireRole("admin"), envpermsCommand);

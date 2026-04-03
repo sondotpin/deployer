@@ -21,8 +21,10 @@ export async function envCommand(ctx: BotContext) {
   if (!server) return ctx.reply(`Server "${serverName}" not found.`);
   if (!checkEnvAccess(ctx, serverName, appName)) return;
 
+  const envPath = db.getEnvPath(serverName, appName);
+
   try {
-    const result = await sshExec(server, `cat ~/${appName}/backend.env`);
+    const result = await sshExec(server, `cat ${envPath}`);
     if (result.code !== 0) {
       return ctx.reply(`Failed (exit ${result.code}): ${result.stderr}`);
     }
@@ -43,7 +45,7 @@ export async function setenvCommand(ctx: BotContext) {
   if (!server) return ctx.reply(`Server "${serverName}" not found.`);
   if (!checkEnvAccess(ctx, serverName, appName)) return;
 
-  const envPath = `~/${appName}/backend.env`;
+  const envPath = db.getEnvPath(serverName, appName);
   const cmd = `grep -q "^${key}=" ${envPath} 2>/dev/null && sed -i "s/^${key}=.*/${key}=${value}/" ${envPath} || echo "${key}=${value}" >> ${envPath}`;
 
   try {
@@ -67,8 +69,10 @@ export async function delenvCommand(ctx: BotContext) {
   if (!server) return ctx.reply(`Server "${serverName}" not found.`);
   if (!checkEnvAccess(ctx, serverName, appName)) return;
 
+  const envPath = db.getEnvPath(serverName, appName);
+
   try {
-    const result = await sshExec(server, `sed -i "/^${key}=/d" ~/${appName}/backend.env`);
+    const result = await sshExec(server, `sed -i "/^${key}=/d" ${envPath}`);
     if (result.code !== 0) {
       return ctx.reply(`Failed (exit ${result.code}): ${result.stderr}`);
     }
@@ -76,6 +80,27 @@ export async function delenvCommand(ctx: BotContext) {
   } catch (err) {
     await ctx.reply(`Failed: ${err}`);
   }
+}
+
+export async function setenvpathCommand(ctx: BotContext) {
+  const text = ctx.message && "text" in ctx.message ? ctx.message.text : "";
+  const match = text.match(/^\/setenvpath\s+(\S+)\s+(\S+)\s+(.+)$/);
+  if (!match) return ctx.reply("Usage: /setenvpath <server> <app> <path>");
+
+  const [, serverName, appName, path] = match;
+  const server = db.getServer(serverName);
+  if (!server) return ctx.reply(`Server "${serverName}" not found.`);
+
+  db.setEnvPath(serverName, appName, path);
+  await ctx.reply(`Env path set: ${serverName}/${appName} → ${path}`);
+}
+
+export async function envpathsCommand(ctx: BotContext) {
+  const paths = db.getAllEnvPaths();
+  if (paths.length === 0) return ctx.reply("No custom env paths. Default: ~/<app>/backend.env");
+
+  const lines = paths.map((p) => `• ${p.server_name}/${p.app_name} → ${p.path}`);
+  await ctx.reply(`Env paths:\n${lines.join("\n")}`);
 }
 
 export async function grantenvCommand(ctx: BotContext) {

@@ -178,6 +178,15 @@ sqlite.exec(`
   )
 `);
 
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS env_paths (
+    server_name TEXT NOT NULL,
+    app_name TEXT NOT NULL,
+    path TEXT NOT NULL,
+    PRIMARY KEY (server_name, app_name)
+  )
+`);
+
 // --- Prepared statements ---
 const cmdPermStmts = {
   grant: sqlite.prepare("INSERT OR IGNORE INTO command_permissions (user_id, command) VALUES (?, ?)"),
@@ -201,6 +210,19 @@ const envPermStmts = {
   getByServer: sqlite.prepare(
     "SELECT user_id, server_name, app_name FROM env_permissions WHERE server_name = ?",
   ),
+};
+
+const envPathStmts = {
+  set: sqlite.prepare(
+    "INSERT OR REPLACE INTO env_paths (server_name, app_name, path) VALUES (?, ?, ?)",
+  ),
+  get: sqlite.prepare(
+    "SELECT path FROM env_paths WHERE server_name = ? AND app_name = ?",
+  ),
+  del: sqlite.prepare(
+    "DELETE FROM env_paths WHERE server_name = ? AND app_name = ?",
+  ),
+  getAll: sqlite.prepare("SELECT server_name, app_name, path FROM env_paths"),
 };
 
 const deployScriptStmts = {
@@ -304,6 +326,21 @@ export const db = {
     type Row = { user_id: number; server_name: string; app_name: string };
     if (serverName) return envPermStmts.getByServer.all(serverName) as Row[];
     return envPermStmts.getAll.all() as Row[];
+  },
+
+  // Env Paths
+  setEnvPath(serverName: string, appName: string, path: string) {
+    envPathStmts.set.run(serverName, appName, path);
+  },
+  getEnvPath(serverName: string, appName: string): string {
+    const row = envPathStmts.get.get(serverName, appName) as { path: string } | undefined;
+    return row?.path ?? `~/${appName}/backend.env`;
+  },
+  deleteEnvPath(serverName: string, appName: string): boolean {
+    return envPathStmts.del.run(serverName, appName).changes > 0;
+  },
+  getAllEnvPaths(): Array<{ server_name: string; app_name: string; path: string }> {
+    return envPathStmts.getAll.all() as Array<{ server_name: string; app_name: string; path: string }>;
   },
 
   // Deploy Scripts
