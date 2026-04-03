@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { createPublicKey, generateKeyPairSync } from "node:crypto";
+import { createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { ServerConfig } from "./config.js";
 import { log } from "./utils/logger.js";
@@ -10,12 +10,49 @@ mkdirSync("data", { recursive: true });
 const KEY_PATH = "data/bot_key";
 const PUB_PATH = "data/bot_key.pub";
 
-function pemToOpenSSH(pem: string): string {
+const encU32 = (n: number) => { const b = Buffer.alloc(4); b.writeUInt32BE(n); return b; };
+const encBuf = (buf: Buffer) => Buffer.concat([encU32(buf.length), buf]);
+
+function pemToOpenSSHPub(pem: string): string {
   const der = createPublicKey(pem).export({ type: "spki", format: "der" });
   const rawKey = der.subarray(-32);
   const keyType = Buffer.from("ssh-ed25519");
-  const encLen = (n: number) => { const b = Buffer.alloc(4); b.writeUInt32BE(n); return b; };
-  return `ssh-ed25519 ${Buffer.concat([encLen(keyType.length), keyType, encLen(rawKey.length), rawKey]).toString("base64")}`;
+  return `ssh-ed25519 ${Buffer.concat([encBuf(keyType), encBuf(rawKey)]).toString("base64")}`;
+}
+
+function pkcs8ToOpenSSHPrivate(pem: string): string {
+  const jwk = createPrivateKey(pem).export({ format: "jwk" }) as { d: string; x: string };
+  const priv = Buffer.from(jwk.d!, "base64url");
+  const pub = Buffer.from(jwk.x!, "base64url");
+  const keyType = Buffer.from("ssh-ed25519");
+
+  const pubBlob = Buffer.concat([encBuf(keyType), encBuf(pub)]);
+  const check = randomBytes(4);
+  let privSection = Buffer.concat([
+    check, check,
+    encBuf(keyType),
+    encBuf(pub),
+    encBuf(Buffer.concat([priv, pub])), // ed25519 private = 32 priv + 32 pub
+    encBuf(Buffer.alloc(0)), // no comment
+  ]);
+  const pad = 8 - (privSection.length % 8);
+  if (pad < 8) {
+    const padding = Buffer.alloc(pad);
+    for (let i = 0; i < pad; i++) padding[i] = i + 1;
+    privSection = Buffer.concat([privSection, padding]);
+  }
+
+  const none = Buffer.from("none");
+  const blob = Buffer.concat([
+    Buffer.from("openssh-key-v1\0"),
+    encBuf(none), encBuf(none), encU32(0), // cipher, kdf, kdf opts
+    encU32(1),           // 1 key
+    encBuf(pubBlob),
+    encBuf(privSection),
+  ]);
+
+  const b64 = blob.toString("base64").match(/.{1,70}/g)!.join("\n");
+  return `-----BEGIN OPENSSH PRIVATE KEY-----\n${b64}\n-----END OPENSSH PRIVATE KEY-----\n`;
 }
 
 if (!existsSync(KEY_PATH)) {
@@ -23,15 +60,22 @@ if (!existsSync(KEY_PATH)) {
     publicKeyEncoding: { type: "spki", format: "pem" },
     privateKeyEncoding: { type: "pkcs8", format: "pem" },
   });
-  writeFileSync(KEY_PATH, privateKey, { mode: 0o600 });
-  writeFileSync(PUB_PATH, pemToOpenSSH(publicKey));
+  writeFileSync(KEY_PATH, pkcs8ToOpenSSHPrivate(privateKey), { mode: 0o600 });
+  writeFileSync(PUB_PATH, pemToOpenSSHPub(publicKey));
   log.info("Generated new ed25519 SSH keypair");
+}
+
+// Migrate existing PKCS8 PEM private key to OpenSSH format
+const privContent = readFileSync(KEY_PATH, "utf-8");
+if (privContent.startsWith("-----BEGIN PRIVATE")) {
+  writeFileSync(KEY_PATH, pkcs8ToOpenSSHPrivate(privContent), { mode: 0o600 });
+  log.info("Migrated private key to OpenSSH format");
 }
 
 // Migrate existing PEM public key to OpenSSH format
 const pubContent = readFileSync(PUB_PATH, "utf-8");
 if (pubContent.startsWith("-----BEGIN")) {
-  writeFileSync(PUB_PATH, pemToOpenSSH(pubContent));
+  writeFileSync(PUB_PATH, pemToOpenSSHPub(pubContent));
   log.info("Migrated public key to OpenSSH format");
 }
 
