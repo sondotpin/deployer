@@ -1,4 +1,5 @@
 import { db } from "../../db.js";
+import { sshExec } from "../../ssh/manager.js";
 import type { BotContext } from "../middleware/auth.js";
 
 export async function serversCommand(ctx: BotContext) {
@@ -78,6 +79,34 @@ export async function editserverCommand(ctx: BotContext) {
 
   const updated = db.getServer(name)!;
   await ctx.reply(`Updated ${name}: ${updated.host}:${updated.port} @${updated.username} [${updated.apps.join(", ")}]`);
+}
+
+export async function checkCommand(ctx: BotContext) {
+  const args = ctx.message && "text" in ctx.message
+    ? ctx.message.text.split(/\s+/).slice(1)
+    : [];
+
+  if (args.length < 1) {
+    return ctx.reply("Usage: /check <server>");
+  }
+
+  const server = db.getServer(args[0]);
+  if (!server) return ctx.reply(`Server "${args[0]}" not found.`);
+
+  await ctx.reply(`Checking ${server.name} (${server.host}:${server.port})...`);
+
+  try {
+    const start = Date.now();
+    const result = await sshExec(server, "echo ok && uptime");
+    const ms = Date.now() - start;
+    if (result.code === 0) {
+      await ctx.reply(`${server.name}: connected in ${ms}ms\n${result.stdout.trim()}`);
+    } else {
+      await ctx.reply(`${server.name}: command failed (exit ${result.code})\n${result.stderr.trim()}`);
+    }
+  } catch (err) {
+    await ctx.reply(`${server.name}: connection failed\n${err}`);
+  }
 }
 
 export async function pubkeyCommand(ctx: BotContext) {
