@@ -15,6 +15,10 @@ export async function execCommand(ctx: BotContext) {
   const server = db.getServer(serverName);
   if (!server) return ctx.reply(`Server "${serverName}" not found.`);
 
+  if (ctx.role !== "admin" && !command.match(/^docker logs\b/)) {
+    return ctx.reply("You can only run `docker logs` commands.");
+  }
+
   await ctx.reply(`Executing on ${server.name}...`);
 
   try {
