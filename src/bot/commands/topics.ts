@@ -1,7 +1,7 @@
 import type { BotContext } from "../middleware/auth.js";
 import { db } from "../../db.js";
 
-// /settopic [label] — Allow bot in the current topic
+// /settopic — Allow bot in the current topic
 export async function setTopicCommand(ctx: BotContext) {
   const chatId = ctx.chat?.id;
   const msg = ctx.message;
@@ -11,11 +11,8 @@ export async function setTopicCommand(ctx: BotContext) {
     return ctx.reply("This command must be used inside a forum topic.");
   }
 
-  const text = msg && "text" in msg ? msg.text ?? "" : "";
-  const label = text.split(" ").slice(1).join(" ").trim() || undefined;
-
-  db.addTopic(chatId, threadId, label);
-  await ctx.reply(`✅ Bot enabled in this topic (thread ${threadId})${label ? `: ${label}` : ""}`);
+  db.addTopic(chatId, threadId);
+  await ctx.reply(`✅ Bot enabled in this topic.`);
 }
 
 // /deltopic — Remove bot from the current topic
