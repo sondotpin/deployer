@@ -1,6 +1,12 @@
 import type { BotContext } from "../middleware/auth.js";
-import { db, type TicketRow } from "../../db.js";
+import { db, type TicketRow, type CommentRow } from "../../db.js";
 import { Markup } from "telegraf";
+
+// --- MarkdownV2 escape ---
+const MD2_CHARS = /[_*[\]()~`>#+\-=|{}.!\\]/g;
+function esc(text: string | number): string {
+  return String(text).replace(MD2_CHARS, "\\$&");
+}
 
 // --- Emoji helpers ---
 const PRIORITY_ICON: Record<string, string> = {
@@ -23,33 +29,72 @@ const TYPE_ICON: Record<string, string> = {
   bug: "🐛",
 };
 
-// --- Format helpers ---
+const PRIORITY_LABEL: Record<string, string> = {
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  open: "Open",
+  in_progress: "In Progress",
+  review: "Review",
+  done: "Done",
+  closed: "Closed",
+};
+
+// --- Format helpers (MarkdownV2) ---
 function formatTicketShort(t: TicketRow): string {
   const pri = PRIORITY_ICON[t.priority] ?? "";
-  const st = STATUS_ICON[t.status] ?? "";
   const type = TYPE_ICON[t.type] ?? "";
-  const assignee = t.assignee_name ? ` → ${t.assignee_name}` : "";
-  const dl = t.deadline ? ` ⏰${t.deadline}` : "";
+  const assignee = t.assignee_name ? ` → ${esc(t.assignee_name)}` : "";
+  const dl = t.deadline ? ` ⏰ ${esc(t.deadline)}` : "";
   const img = t.image_file_id ? " 🖼" : "";
-  return `${type}${pri} #${t.id} ${t.title} [${st}${t.status}]${assignee}${dl}${img}`;
+  const st = STATUS_ICON[t.status] ?? "";
+  return `${type}${pri} *\\#${t.id}* ${esc(t.title)} \\[${st}${esc(t.status)}\\]${assignee}${dl}${img}`;
 }
 
 function formatTicketDetail(t: TicketRow): string {
+  const type = TYPE_ICON[t.type] ?? "";
+  const pri = PRIORITY_ICON[t.priority] ?? "";
+  const st = STATUS_ICON[t.status] ?? "";
+  const assignee = t.assignee_name ?? (t.assignee_id ? String(t.assignee_id) : "—");
+  const deadline = t.deadline ?? "—";
+  const img = t.image_file_id ? "🖼 attached" : "—";
+
   const lines = [
-    `${TYPE_ICON[t.type]} #${t.id} ${t.title}`,
+    `${type} *${esc(t.type.toUpperCase())} \\#${t.id}*`,
+    `*${esc(t.title)}*`,
     ``,
-    `Type: ${t.type}`,
-    `Priority: ${PRIORITY_ICON[t.priority]} ${t.priority}`,
-    `Status: ${STATUS_ICON[t.status]} ${t.status}`,
-    `Assigner: ${t.assigner_name ?? t.assigner_id}`,
-    `Assignee: ${t.assignee_name ?? t.assignee_id ?? "—"}`,
-    `Deadline: ${t.deadline ?? "—"}`,
-    `Image: ${t.image_file_id ? "🖼 attached" : "—"}`,
+    `${pri} *Priority:*  ${esc(PRIORITY_LABEL[t.priority] ?? t.priority)}`,
+    `${st} *Status:*  ${esc(STATUS_LABEL[t.status] ?? t.status)}`,
+    `👤 *Assigner:*  ${esc(t.assigner_name ?? t.assigner_id)}`,
+    `👥 *Assignee:*  ${esc(assignee)}`,
+    `⏰ *Deadline:*  ${esc(deadline)}`,
+    `🖼 *Image:*  ${esc(img)}`,
   ];
-  if (t.description) lines.push(`\nDescription:\n${t.description}`);
-  lines.push(`\nCreated: ${t.created_at}`);
-  lines.push(`Updated: ${t.updated_at}`);
+
+  if (t.description) {
+    lines.push(``);
+    lines.push(`📝 *Description:*`);
+    lines.push(esc(t.description));
+  }
+
+  lines.push(``);
+  lines.push(`_Created: ${esc(t.created_at)}_`);
+  lines.push(`_Updated: ${esc(t.updated_at)}_`);
+
   return lines.join("\n");
+}
+
+function formatComments(comments: CommentRow[]): string {
+  if (comments.length === 0) return "";
+  let msg = `\n\n💬 *Comments:*`;
+  for (const c of comments) {
+    msg += `\n• *${esc(c.username ?? c.user_id)}* \\(${esc(c.created_at)}\\):\n  ${esc(c.content)}`;
+  }
+  return msg;
 }
 
 function ticketActionButtons(ticketId: number) {
@@ -69,6 +114,15 @@ function ticketActionButtons(ticketId: number) {
       Markup.button.callback("🟢 Low", `tp_${ticketId}_low`),
     ],
   ]);
+}
+
+// Helper to merge parse_mode with inline keyboard
+function md2Options(ticketId: number) {
+  return { parse_mode: "MarkdownV2" as const, ...ticketActionButtons(ticketId) };
+}
+
+function md2() {
+  return { parse_mode: "MarkdownV2" as const };
 }
 
 // Extract photo file_id from message or replied message
@@ -174,16 +228,17 @@ async function createTicket(ctx: BotContext, type: "task" | "bug") {
   });
 
   const ticket = db.getTicket(id)!;
-  const caption = `${TYPE_ICON[type]} ${type.toUpperCase()} #${id} created!\n\n${formatTicketDetail(ticket)}`;
+  const caption = `✅ *${esc(type.toUpperCase())} \\#${id} created\\!*\n\n${formatTicketDetail(ticket)}`;
 
   // If ticket has image, send as photo with caption
   if (ticket.image_file_id) {
     await ctx.replyWithPhoto(ticket.image_file_id, {
       caption,
+      parse_mode: "MarkdownV2",
       ...ticketActionButtons(id),
     });
   } else {
-    await ctx.reply(caption, ticketActionButtons(id));
+    await ctx.reply(caption, md2Options(id));
   }
 }
 
@@ -217,25 +272,23 @@ export async function ticketDetailCommand(ctx: BotContext) {
 
   const comments = db.getComments(id);
   let msg = formatTicketDetail(ticket);
-  if (comments.length > 0) {
-    msg += "\n\n💬 Comments:";
-    for (const c of comments) {
-      msg += `\n• ${c.username ?? c.user_id} (${c.created_at}): ${c.content}`;
-    }
-  }
+  msg += formatComments(comments);
 
   // If ticket has image, send as photo
   if (ticket.image_file_id) {
-    await ctx.replyWithPhoto(ticket.image_file_id, {
-      caption: msg.slice(0, 1024), // Telegram caption limit
-      ...ticketActionButtons(id),
-    });
-    // If caption was truncated, send rest as text
-    if (msg.length > 1024) {
-      await ctx.reply(msg.slice(1024), ticketActionButtons(id));
+    // Telegram caption limit is 1024
+    if (msg.length <= 1024) {
+      await ctx.replyWithPhoto(ticket.image_file_id, {
+        caption: msg,
+        parse_mode: "MarkdownV2",
+        ...ticketActionButtons(id),
+      });
+    } else {
+      await ctx.replyWithPhoto(ticket.image_file_id);
+      await ctx.reply(msg, md2Options(id));
     }
   } else {
-    await ctx.reply(msg, ticketActionButtons(id));
+    await ctx.reply(msg, md2Options(id));
   }
 }
 
@@ -280,10 +333,10 @@ export async function tasksListCommand(ctx: BotContext) {
     header = "📌 Open Tasks";
   }
 
-  if (tickets.length === 0) return ctx.reply(`${header}\n\nNo tickets found.`);
+  if (tickets.length === 0) return ctx.reply(`${esc(header)}\n\n_No tickets found\\._`, md2());
 
   const lines = tickets.map(formatTicketShort);
-  await ctx.reply(`${header}\n\n${lines.join("\n")}`);
+  await ctx.reply(`*${esc(header)}*\n\n${lines.join("\n")}`, md2());
 }
 
 // /bugs [mine|done] — List bugs
@@ -305,10 +358,10 @@ export async function bugsListCommand(ctx: BotContext) {
     header = "🐛 Open Bugs";
   }
 
-  if (tickets.length === 0) return ctx.reply(`${header}\n\nNo bugs found.`);
+  if (tickets.length === 0) return ctx.reply(`${esc(header)}\n\n_No bugs found\\._`, md2());
 
   const lines = tickets.map(formatTicketShort);
-  await ctx.reply(`${header}\n\n${lines.join("\n")}`);
+  await ctx.reply(`*${esc(header)}*\n\n${lines.join("\n")}`, md2());
 }
 
 // /assign <ticket_id> <user_id> — Assign ticket
@@ -405,9 +458,9 @@ export async function editTaskCommand(ctx: BotContext) {
       }
     }
 
-    if (updated.length === 0) return ctx.reply("Nothing to update.");
+    if (updated.length === 0) return ctx.reply("Nothing to update\\.", md2());
     const t = db.getTicket(ticketId)!;
-    return ctx.reply(`✏️ #${ticketId} updated: ${updated.join(", ")}\n\n${formatTicketDetail(t)}`, ticketActionButtons(ticketId));
+    return ctx.reply(`✏️ *\\#${ticketId} updated:* ${esc(updated.join(", "))}\n\n${formatTicketDetail(t)}`, md2Options(ticketId));
   }
 
   // Otherwise: /edit <id> <field> <value>
@@ -436,7 +489,7 @@ export async function editTaskCommand(ctx: BotContext) {
   }
 
   const t = db.getTicket(ticketId)!;
-  await ctx.reply(`✏️ #${ticketId} ${field} updated.\n\n${formatTicketDetail(t)}`, ticketActionButtons(ticketId));
+  await ctx.reply(`✏️ *\\#${ticketId} ${esc(field)} updated\\.*\n\n${formatTicketDetail(t)}`, md2Options(ticketId));
 }
 
 const EDIT_USAGE = `Usage:
@@ -457,18 +510,18 @@ export async function myStatsCommand(ctx: BotContext) {
     byStatus[t.status] = (byStatus[t.status] ?? 0) + 1;
   }
 
-  let msg = `📊 My Stats\n\nActive: ${myTickets.length}\nDone (recent): ${myDone.length}\n`;
+  let msg = `📊 *My Stats*\n\n*Active:* ${myTickets.length}\n*Done \\(recent\\):* ${myDone.length}\n`;
   for (const [status, count] of Object.entries(byStatus)) {
-    msg += `${STATUS_ICON[status] ?? ""} ${status}: ${count}\n`;
+    msg += `${STATUS_ICON[status] ?? ""} ${esc(status)}: ${count}\n`;
   }
 
   const stats = db.getTicketStats();
-  msg += `\n📈 Overall:`;
+  msg += `\n📈 *Overall:*`;
   for (const s of stats) {
-    msg += `\n${TYPE_ICON[s.type] ?? ""} ${s.type}/${s.status}: ${s.count}`;
+    msg += `\n${TYPE_ICON[s.type] ?? ""} ${esc(s.type)}/${esc(s.status)}: ${s.count}`;
   }
 
-  await ctx.reply(msg);
+  await ctx.reply(msg, md2());
 }
 
 // --- Callback handlers for inline keyboards ---
@@ -492,11 +545,10 @@ export async function handleTicketStatusCallback(ctx: BotContext) {
   const buttons = ticketActionButtons(ticketId);
 
   try {
-    // If original message is a photo, edit caption; otherwise edit text
     if (ticket.image_file_id) {
-      await ctx.editMessageCaption(text, buttons);
+      await ctx.editMessageCaption(text, { parse_mode: "MarkdownV2", ...buttons });
     } else {
-      await ctx.editMessageText(text, buttons);
+      await ctx.editMessageText(text, { parse_mode: "MarkdownV2", ...buttons });
     }
   } catch { /* message not modified */ }
 }
@@ -521,9 +573,9 @@ export async function handleTicketPriorityCallback(ctx: BotContext) {
 
   try {
     if (ticket.image_file_id) {
-      await ctx.editMessageCaption(text, buttons);
+      await ctx.editMessageCaption(text, { parse_mode: "MarkdownV2", ...buttons });
     } else {
-      await ctx.editMessageText(text, buttons);
+      await ctx.editMessageText(text, { parse_mode: "MarkdownV2", ...buttons });
     }
   } catch { /* message not modified */ }
 }
