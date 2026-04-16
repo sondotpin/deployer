@@ -81,7 +81,13 @@ export function createBot(): Telegraf<BotContext> {
   bot.action(/^ts_\d+_.+$/, handleTicketStatusCallback);
   bot.action(/^tp_\d+_.+$/, handleTicketPriorityCallback);
 
-  bot.on("text", (ctx) => ctx.reply("Unknown command. Try /help"));
+  // Only reply "Unknown command" for unrecognized commands, not all messages
+  bot.on("text", (ctx) => {
+    const text = ctx.message.text;
+    if (text && text.startsWith("/")) {
+      return ctx.reply("Unknown command. Try /help");
+    }
+  });
 
   log.info("Bot commands registered");
   return bot;
