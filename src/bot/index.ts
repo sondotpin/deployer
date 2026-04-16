@@ -12,6 +12,7 @@ import { restartCommand } from "./commands/restart.js";
 import { execCommand } from "./commands/exec.js";
 import { adddevCommand, removedevCommand, listdevsCommand, grantCommand, revokeCommand, permsCommand } from "./commands/devs.js";
 import { envCommand, setenvCommand, delenvCommand, setenvpathCommand, envpathsCommand, grantenvCommand, revokeenvCommand, envpermsCommand } from "./commands/env.js";
+import { taskCommand, bugCommand, taskPhotoCommand, bugPhotoCommand, ticketDetailCommand, tasksListCommand, bugsListCommand, assignCommand, commentCommand, deadlineCommand, editTaskCommand, imageCommand, myStatsCommand, handleTicketStatusCallback, handleTicketPriorityCallback } from "./commands/tasks.js";
 
 export function createBot(): Telegraf<BotContext> {
   const bot = new Telegraf<BotContext>(config.botToken);
@@ -54,6 +55,31 @@ export function createBot(): Telegraf<BotContext> {
   bot.command("grantenv", requireRole("admin"), grantenvCommand);
   bot.command("revokeenv", requireRole("admin"), revokeenvCommand);
   bot.command("envperms", requireRole("admin"), envpermsCommand);
+
+  // Ticket management — all developers
+  bot.command("task", requireRole("developer"), taskCommand);
+  bot.command("bug", requireRole("developer"), bugCommand);
+  bot.command("t", requireRole("developer"), ticketDetailCommand);
+  bot.command("tasks", requireRole("developer"), tasksListCommand);
+  bot.command("bugs", requireRole("developer"), bugsListCommand);
+  bot.command("assign", requireRole("developer"), assignCommand);
+  bot.command("comment", requireRole("developer"), commentCommand);
+  bot.command("deadline", requireRole("developer"), deadlineCommand);
+  bot.command("edit", requireRole("developer"), editTaskCommand);
+  bot.command("image", requireRole("developer"), imageCommand);
+  bot.command("mystats", requireRole("developer"), myStatsCommand);
+
+  // Handle photo messages with /task or /bug caption
+  bot.on("photo", (ctx) => {
+    const caption = ctx.message.caption ?? "";
+    if (caption.startsWith("/task")) return taskPhotoCommand(ctx as unknown as BotContext);
+    if (caption.startsWith("/bug")) return bugPhotoCommand(ctx as unknown as BotContext);
+    if (caption.startsWith("/image")) return imageCommand(ctx as unknown as BotContext);
+  });
+
+  // Inline keyboard callbacks for tickets
+  bot.action(/^ts_\d+_.+$/, handleTicketStatusCallback);
+  bot.action(/^tp_\d+_.+$/, handleTicketPriorityCallback);
 
   bot.on("text", (ctx) => ctx.reply("Unknown command. Try /help"));
 

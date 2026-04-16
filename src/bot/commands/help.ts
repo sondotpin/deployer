@@ -1,6 +1,26 @@
 import type { BotContext } from "../middleware/auth.js";
 
+const TICKET_CMDS = `
+
+📌 Task Management:
+/task <title> [-p priority] [-d deadline] — Create task
+/bug <title> [-p priority] [-d deadline] — Create bug
+/tasks [mine|done|all] — List tasks
+/bugs [mine|done] — List bugs
+/t <id> — View ticket detail
+/assign <id> <user_id> [name] — Assign ticket
+/comment <id> <text> — Add comment
+/deadline <id> <YYYY-MM-DD> — Set deadline
+/edit <id> <title|desc|priority> <value> — Edit ticket
+/image <id> — Reply photo to attach image
+/mystats — Your ticket stats
+
+Tip: Use | to add description: /task Title | Description
+Tip: Send photo with /task caption to attach image`;
+
 const DEVELOPER_CMDS = `
+
+🖥 Server Management:
 /servers — List all servers
 /status <server> — Server health check
 /logs <server> <service> [lines] — View logs
@@ -27,6 +47,7 @@ const ADMIN_CMDS = `
 
 export async function helpCommand(ctx: BotContext) {
   let msg = "/start — Welcome\n/help — This message";
+  msg += TICKET_CMDS;
   msg += DEVELOPER_CMDS;
   if (ctx.role === "admin") msg += ADMIN_CMDS;
   await ctx.reply(msg);

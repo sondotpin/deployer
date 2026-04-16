@@ -199,6 +199,41 @@ sqlite.exec(`
   )
 `);
 
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS tickets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL CHECK(type IN ('task', 'bug')),
+    title TEXT NOT NULL,
+    description TEXT,
+    priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('low', 'medium', 'high', 'critical')),
+    status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'in_progress', 'review', 'done', 'closed')),
+    assigner_id INTEGER NOT NULL,
+    assigner_name TEXT,
+    assignee_id INTEGER,
+    assignee_name TEXT,
+    deadline TEXT,
+    image_file_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )
+`);
+
+// Migration: add image_file_id if missing
+try {
+  sqlite.exec("ALTER TABLE tickets ADD COLUMN image_file_id TEXT");
+} catch { /* column already exists */ }
+
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS ticket_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL REFERENCES tickets(id),
+    user_id INTEGER NOT NULL,
+    username TEXT,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )
+`);
+
 // --- Prepared statements ---
 const cmdPermStmts = {
   grant: sqlite.prepare("INSERT OR IGNORE INTO command_permissions (user_id, command) VALUES (?, ?)"),
@@ -272,6 +307,62 @@ const deployScriptStmts = {
   ),
 };
 
+const ticketStmts = {
+  create: sqlite.prepare(
+    `INSERT INTO tickets (type, title, description, priority, assigner_id, assigner_name, assignee_id, assignee_name, deadline, image_file_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ),
+  getById: sqlite.prepare("SELECT * FROM tickets WHERE id = ?"),
+  updateStatus: sqlite.prepare(
+    "UPDATE tickets SET status = ?, updated_at = datetime('now') WHERE id = ?",
+  ),
+  updatePriority: sqlite.prepare(
+    "UPDATE tickets SET priority = ?, updated_at = datetime('now') WHERE id = ?",
+  ),
+  updateAssignee: sqlite.prepare(
+    "UPDATE tickets SET assignee_id = ?, assignee_name = ?, updated_at = datetime('now') WHERE id = ?",
+  ),
+  updateDeadline: sqlite.prepare(
+    "UPDATE tickets SET deadline = ?, updated_at = datetime('now') WHERE id = ?",
+  ),
+  updateTitle: sqlite.prepare(
+    "UPDATE tickets SET title = ?, updated_at = datetime('now') WHERE id = ?",
+  ),
+  updateDescription: sqlite.prepare(
+    "UPDATE tickets SET description = ?, updated_at = datetime('now') WHERE id = ?",
+  ),
+  updateImage: sqlite.prepare(
+    "UPDATE tickets SET image_file_id = ?, updated_at = datetime('now') WHERE id = ?",
+  ),
+  listByType: sqlite.prepare(
+    "SELECT * FROM tickets WHERE type = ? AND status NOT IN ('done', 'closed') ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id DESC",
+  ),
+  listByAssignee: sqlite.prepare(
+    "SELECT * FROM tickets WHERE assignee_id = ? AND status NOT IN ('done', 'closed') ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id DESC",
+  ),
+  listByStatus: sqlite.prepare(
+    "SELECT * FROM tickets WHERE status = ? ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id DESC",
+  ),
+  listAll: sqlite.prepare(
+    "SELECT * FROM tickets WHERE status NOT IN ('done', 'closed') ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id DESC",
+  ),
+  listDone: sqlite.prepare(
+    "SELECT * FROM tickets WHERE status IN ('done', 'closed') ORDER BY updated_at DESC LIMIT 20",
+  ),
+  stats: sqlite.prepare(
+    `SELECT type, status, COUNT(*) as count FROM tickets GROUP BY type, status`,
+  ),
+};
+
+const commentStmts = {
+  add: sqlite.prepare(
+    "INSERT INTO ticket_comments (ticket_id, user_id, username, content) VALUES (?, ?, ?, ?)",
+  ),
+  getByTicket: sqlite.prepare(
+    "SELECT * FROM ticket_comments WHERE ticket_id = ? ORDER BY created_at ASC",
+  ),
+};
+
 const devStmts = {
   add: sqlite.prepare("INSERT OR IGNORE INTO developers (user_id) VALUES (?)"),
   remove: sqlite.prepare("DELETE FROM developers WHERE user_id = ?"),
@@ -289,6 +380,32 @@ const serverStmts = {
 };
 
 type ServerRow = { name: string; host: string; port: number; username: string; apps: string };
+
+export type TicketRow = {
+  id: number;
+  type: string;
+  title: string;
+  description: string | null;
+  priority: string;
+  status: string;
+  assigner_id: number;
+  assigner_name: string | null;
+  assignee_id: number | null;
+  assignee_name: string | null;
+  deadline: string | null;
+  image_file_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CommentRow = {
+  id: number;
+  ticket_id: number;
+  user_id: number;
+  username: string | null;
+  content: string;
+  created_at: string;
+};
 
 function rowToConfig(row: ServerRow): ServerConfig {
   return {
@@ -403,6 +520,77 @@ export const db = {
   },
   deleteDeployScript(serverName: string, appName: string): boolean {
     return deployScriptStmts.del.run(serverName, appName).changes > 0;
+  },
+
+  // Tickets
+  createTicket(data: {
+    type: "task" | "bug";
+    title: string;
+    description?: string;
+    priority?: string;
+    assignerId: number;
+    assignerName?: string;
+    assigneeId?: number;
+    assigneeName?: string;
+    deadline?: string;
+    imageFileId?: string;
+  }): number {
+    const result = ticketStmts.create.run(
+      data.type, data.title, data.description ?? null,
+      data.priority ?? "medium", data.assignerId, data.assignerName ?? null,
+      data.assigneeId ?? null, data.assigneeName ?? null, data.deadline ?? null,
+      data.imageFileId ?? null,
+    );
+    return Number(result.lastInsertRowid);
+  },
+  getTicket(id: number): TicketRow | undefined {
+    return ticketStmts.getById.get(id) as TicketRow | undefined;
+  },
+  updateTicketStatus(id: number, status: string) {
+    ticketStmts.updateStatus.run(status, id);
+  },
+  updateTicketPriority(id: number, priority: string) {
+    ticketStmts.updatePriority.run(priority, id);
+  },
+  updateTicketAssignee(id: number, assigneeId: number | null, assigneeName: string | null) {
+    ticketStmts.updateAssignee.run(assigneeId, assigneeName, id);
+  },
+  updateTicketDeadline(id: number, deadline: string | null) {
+    ticketStmts.updateDeadline.run(deadline, id);
+  },
+  updateTicketTitle(id: number, title: string) {
+    ticketStmts.updateTitle.run(title, id);
+  },
+  updateTicketDescription(id: number, description: string | null) {
+    ticketStmts.updateDescription.run(description, id);
+  },
+  updateTicketImage(id: number, fileId: string | null) {
+    ticketStmts.updateImage.run(fileId, id);
+  },
+  listTickets(type?: string): TicketRow[] {
+    if (type) return ticketStmts.listByType.all(type) as TicketRow[];
+    return ticketStmts.listAll.all() as TicketRow[];
+  },
+  listTicketsByAssignee(assigneeId: number): TicketRow[] {
+    return ticketStmts.listByAssignee.all(assigneeId) as TicketRow[];
+  },
+  listTicketsByStatus(status: string): TicketRow[] {
+    return ticketStmts.listByStatus.all(status) as TicketRow[];
+  },
+  listDoneTickets(): TicketRow[] {
+    return ticketStmts.listDone.all() as TicketRow[];
+  },
+  getTicketStats(): Array<{ type: string; status: string; count: number }> {
+    return ticketStmts.stats.all() as Array<{ type: string; status: string; count: number }>;
+  },
+
+  // Comments
+  addComment(ticketId: number, userId: number, username: string, content: string): number {
+    const result = commentStmts.add.run(ticketId, userId, username, content);
+    return Number(result.lastInsertRowid);
+  },
+  getComments(ticketId: number): CommentRow[] {
+    return commentStmts.getByTicket.all(ticketId) as CommentRow[];
   },
 
   // SSH Keys
