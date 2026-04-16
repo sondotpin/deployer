@@ -43,7 +43,10 @@ const ADMIN_CMDS = `
 /envperms [server] — List env permissions
 /setscript <server> <app> <script> — Set deploy script
 /script <server> <app> — View deploy script
-/delscript <server> <app> — Delete deploy script`;
+/delscript <server> <app> — Delete deploy script
+/settopic [label] — Allow bot in this topic
+/deltopic — Remove bot from this topic
+/topics — List allowed topics`;
 
 export async function helpCommand(ctx: BotContext) {
   let msg = "/start — Welcome\n/help — This message";

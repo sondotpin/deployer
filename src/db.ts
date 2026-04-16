@@ -234,6 +234,15 @@ sqlite.exec(`
   )
 `);
 
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS allowed_topics (
+    chat_id INTEGER NOT NULL,
+    thread_id INTEGER NOT NULL,
+    label TEXT,
+    PRIMARY KEY (chat_id, thread_id)
+  )
+`);
+
 // --- Prepared statements ---
 const cmdPermStmts = {
   grant: sqlite.prepare("INSERT OR IGNORE INTO command_permissions (user_id, command) VALUES (?, ?)"),
@@ -304,6 +313,24 @@ const deployScriptStmts = {
   ),
   del: sqlite.prepare(
     "DELETE FROM deploy_scripts WHERE server_name = ? AND app_name = ?",
+  ),
+};
+
+const topicStmts = {
+  add: sqlite.prepare(
+    "INSERT OR REPLACE INTO allowed_topics (chat_id, thread_id, label) VALUES (?, ?, ?)",
+  ),
+  remove: sqlite.prepare(
+    "DELETE FROM allowed_topics WHERE chat_id = ? AND thread_id = ?",
+  ),
+  getByChatId: sqlite.prepare(
+    "SELECT * FROM allowed_topics WHERE chat_id = ?",
+  ),
+  isAllowed: sqlite.prepare(
+    "SELECT 1 FROM allowed_topics WHERE chat_id = ? AND thread_id = ?",
+  ),
+  hasAny: sqlite.prepare(
+    "SELECT 1 FROM allowed_topics WHERE chat_id = ?",
   ),
 };
 
@@ -582,6 +609,23 @@ export const db = {
   },
   getTicketStats(): Array<{ type: string; status: string; count: number }> {
     return ticketStmts.stats.all() as Array<{ type: string; status: string; count: number }>;
+  },
+
+  // Allowed Topics
+  addTopic(chatId: number, threadId: number, label?: string) {
+    topicStmts.add.run(chatId, threadId, label ?? null);
+  },
+  removeTopic(chatId: number, threadId: number): boolean {
+    return topicStmts.remove.run(chatId, threadId).changes > 0;
+  },
+  getTopics(chatId: number): Array<{ chat_id: number; thread_id: number; label: string | null }> {
+    return topicStmts.getByChatId.all(chatId) as Array<{ chat_id: number; thread_id: number; label: string | null }>;
+  },
+  isTopicAllowed(chatId: number, threadId: number): boolean {
+    return topicStmts.isAllowed.get(chatId, threadId) !== undefined;
+  },
+  hasTopicRestriction(chatId: number): boolean {
+    return topicStmts.hasAny.get(chatId) !== undefined;
   },
 
   // Comments

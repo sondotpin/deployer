@@ -13,6 +13,7 @@ import { execCommand } from "./commands/exec.js";
 import { adddevCommand, removedevCommand, listdevsCommand, grantCommand, revokeCommand, permsCommand } from "./commands/devs.js";
 import { envCommand, setenvCommand, delenvCommand, setenvpathCommand, envpathsCommand, grantenvCommand, revokeenvCommand, envpermsCommand } from "./commands/env.js";
 import { taskCommand, bugCommand, taskPhotoCommand, bugPhotoCommand, ticketDetailCommand, tasksListCommand, bugsListCommand, assignCommand, commentCommand, deadlineCommand, editTaskCommand, imageCommand, myStatsCommand, handleTicketStatusCallback, handleTicketPriorityCallback } from "./commands/tasks.js";
+import { setTopicCommand, delTopicCommand, topicsCommand } from "./commands/topics.js";
 
 export function createBot(): Telegraf<BotContext> {
   const bot = new Telegraf<BotContext>(config.botToken);
@@ -55,6 +56,9 @@ export function createBot(): Telegraf<BotContext> {
   bot.command("grantenv", requireRole("admin"), grantenvCommand);
   bot.command("revokeenv", requireRole("admin"), revokeenvCommand);
   bot.command("envperms", requireRole("admin"), envpermsCommand);
+  bot.command("settopic", requireRole("admin"), setTopicCommand);
+  bot.command("deltopic", requireRole("admin"), delTopicCommand);
+  bot.command("topics", requireRole("admin"), topicsCommand);
 
   // Ticket management — all developers
   bot.command("task", requireRole("developer"), taskCommand);

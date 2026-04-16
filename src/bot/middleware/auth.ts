@@ -32,6 +32,15 @@ export const authMiddleware: MiddlewareFn<BotContext> = (ctx, next) => {
     return ctx.reply("Access denied.");
   }
 
+  // Topic restriction: if chat has allowed topics configured, only respond in those topics
+  const chatId = ctx.chat?.id;
+  const threadId = (ctx.message && "message_thread_id" in ctx.message) ? ctx.message.message_thread_id : undefined;
+  if (chatId && db.hasTopicRestriction(chatId)) {
+    if (!threadId || !db.isTopicAllowed(chatId, threadId)) {
+      return; // Silently ignore messages outside allowed topics
+    }
+  }
+
   return next();
 };
 
