@@ -365,20 +365,57 @@ export async function deadlineCommand(ctx: BotContext) {
   await ctx.reply(`⏰ Deadline for #${ticketId} set to ${parts[2]}`);
 }
 
-// /edit <ticket_id> <title|desc|priority> <value>
+// /edit <id> <title> [| description] [| priority]
+// OR /edit <id> <field> <value>  (field = title, desc, priority)
 export async function editTaskCommand(ctx: BotContext) {
   const text = getMessageText(ctx);
-  const parts = text.split(" ");
-  if (parts.length < 4) return ctx.reply("Usage: /edit <ticket_id> <title|desc|priority> <value>");
+  const firstSpace = text.indexOf(" ");
+  if (firstSpace === -1) return ctx.reply(EDIT_USAGE);
 
-  const ticketId = parseInt(parts[1], 10);
+  const afterCmd = text.slice(firstSpace + 1).trim();
+  const idEnd = afterCmd.indexOf(" ");
+  if (idEnd === -1) return ctx.reply(EDIT_USAGE);
+
+  const ticketId = parseInt(afterCmd.slice(0, idEnd), 10);
   if (isNaN(ticketId)) return ctx.reply("Invalid ticket ID.");
 
   const ticket = db.getTicket(ticketId);
   if (!ticket) return ctx.reply(`Ticket #${ticketId} not found.`);
 
-  const field = parts[2].toLowerCase();
-  const value = parts.slice(3).join(" ");
+  const rest = afterCmd.slice(idEnd + 1).trim();
+
+  // If contains |, use pipe format: title | desc | priority
+  if (rest.includes("|")) {
+    const segments = rest.split("|").map(s => s.trim());
+    const updated: string[] = [];
+
+    if (segments[0]) {
+      db.updateTicketTitle(ticketId, segments[0]);
+      updated.push("title");
+    }
+    if (segments[1]) {
+      db.updateTicketDescription(ticketId, segments[1]);
+      updated.push("desc");
+    }
+    if (segments[2]) {
+      const p = segments[2].toLowerCase();
+      if (["low", "medium", "high", "critical"].includes(p)) {
+        db.updateTicketPriority(ticketId, p);
+        updated.push("priority");
+      }
+    }
+
+    if (updated.length === 0) return ctx.reply("Nothing to update.");
+    const t = db.getTicket(ticketId)!;
+    return ctx.reply(`✏️ #${ticketId} updated: ${updated.join(", ")}\n\n${formatTicketDetail(t)}`, ticketActionButtons(ticketId));
+  }
+
+  // Otherwise: /edit <id> <field> <value>
+  const fieldEnd = rest.indexOf(" ");
+  if (fieldEnd === -1) return ctx.reply(EDIT_USAGE);
+
+  const field = rest.slice(0, fieldEnd).toLowerCase();
+  const value = rest.slice(fieldEnd + 1).trim();
 
   switch (field) {
     case "title":
@@ -395,11 +432,20 @@ export async function editTaskCommand(ctx: BotContext) {
       break;
     }
     default:
-      return ctx.reply("Field must be: title, desc, priority");
+      return ctx.reply(EDIT_USAGE);
   }
 
-  await ctx.reply(`✏️ Ticket #${ticketId} ${field} updated.`);
+  const t = db.getTicket(ticketId)!;
+  await ctx.reply(`✏️ #${ticketId} ${field} updated.\n\n${formatTicketDetail(t)}`, ticketActionButtons(ticketId));
 }
+
+const EDIT_USAGE = `Usage:
+/edit <id> <title> | <description> | <priority>
+/edit <id> title <new title>
+/edit <id> desc <new description>
+/edit <id> priority <low|medium|high|critical>
+
+Example: /edit 1 Thẻ này thừa | Xem nếu không cần thì bỏ đi | medium`;
 
 // /mystats — Personal ticket stats
 export async function myStatsCommand(ctx: BotContext) {
